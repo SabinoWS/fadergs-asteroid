@@ -1,13 +1,27 @@
 import "./style.css";
+import { playExplosion, playShot } from "./audio.ts";
 import {
+  asteroidDamage,
   asteroidIsGone,
   createAsteroid,
   drawAsteroid,
   moveAsteroid,
   type Asteroid,
+  type AsteroidSide,
   type AsteroidSize,
 } from "./asteroid.ts";
-import { createShip, drawShip, moveShip, SHIP_NOSE, type Ship } from "./ship.ts";
+import {
+  createShip,
+  drawLifeBar,
+  drawShip,
+  moveShip,
+  shipForward,
+  shipHitsAsteroid,
+  SHIP_LIFE_MAX,
+  SHIP_NOSE,
+  type Ship,
+  type ShipControl,
+} from "./ship.ts";
 import {
   createShot,
   drawShot,
@@ -17,9 +31,18 @@ import {
   type Shot,
 } from "./shot.ts";
 
-const ARROWS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const SPAWN_EVERY = 0.85;
-const MAX_ASTEROIDS = 6;
+const PILOT_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "KeyW",
+  "KeyA",
+  "KeyS",
+  "KeyD",
+]);
+const SIDES: readonly AsteroidSide[] = ["left", "right", "top", "bottom"];
+const SPINS = [1.1, -0.8, 1.5, -1.3];
 const LANES = [0.18, 0.36, 0.3, 0.74];
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -38,11 +61,14 @@ start(canvas, ctx);
 
 type State = {
   ship: Ship;
+  life: number;
   asteroids: Asteroid[];
   shots: Shot[];
   held: Set<string>;
+  contacts: Set<Asteroid>;
   spawnIn: number;
   spawnIndex: number;
+  elapsed: number;
 };
 
 function start(
@@ -52,32 +78,41 @@ function start(
   fit(canvas);
   const state: State = {
     ship: createShip(canvas.width / 2, canvas.height / 2),
+    life: SHIP_LIFE_MAX,
     asteroids: [],
     shots: [],
     held: new Set<string>(),
+    contacts: new Set<Asteroid>(),
     spawnIn: 0,
     spawnIndex: 0,
+    elapsed: 0,
   };
 
   window.addEventListener("keydown", (event) => {
     if (event.code === "Space") {
       event.preventDefault();
       if (!event.repeat) {
+        const nose = shipForward(state.ship.angle);
         state.shots.push(
-          createShot(state.ship.x, state.ship.y - SHIP_NOSE),
+          createShot(
+            state.ship.x + nose.x * SHIP_NOSE,
+            state.ship.y + nose.y * SHIP_NOSE,
+            state.ship.angle,
+          ),
         );
+        playShot();
       }
       return;
     }
-    if (!ARROWS.has(event.key)) {
+    if (!PILOT_KEYS.has(event.code)) {
       return;
     }
     event.preventDefault();
-    state.held.add(event.key);
+    state.held.add(event.code);
   });
 
   window.addEventListener("keyup", (event) => {
-    state.held.delete(event.key);
+    state.held.delete(event.code);
   });
 
   window.addEventListener("blur", () => {
@@ -106,12 +141,14 @@ function frame(
   dt: number,
 ): void {
   fit(canvas);
-  moveShip(state.ship, direction(state.held), dt, {
+  state.elapsed += dt;
+  moveShip(state.ship, control(state.held), dt, {
     width: canvas.width,
     height: canvas.height,
   });
   updateAsteroids(state, dt, canvas.width, canvas.height);
-  updateShots(state, dt);
+  updateShots(state, dt, canvas.width, canvas.height);
+  hitShip(state);
 
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -122,6 +159,7 @@ function frame(
     drawShot(ctx, shot);
   }
   drawShip(ctx, state.ship);
+  drawLifeBar(ctx, state.ship, state.life);
 }
 
 function updateAsteroids(
@@ -134,20 +172,30 @@ function updateAsteroids(
     moveAsteroid(asteroid, dt);
   }
   state.asteroids = state.asteroids.filter(
-    (asteroid) => !asteroidIsGone(asteroid, width),
+    (asteroid) => !asteroidIsGone(asteroid, width, height),
   );
 
-  if (state.asteroids.length >= MAX_ASTEROIDS) {
-    state.spawnIn = SPAWN_EVERY;
+  const cap = asteroidCap(state.elapsed);
+  const every = spawnInterval(state.elapsed);
+  if (state.asteroids.length >= cap) {
+    state.spawnIn = every;
     return;
   }
 
   state.spawnIn -= dt;
-  while (state.spawnIn <= 0 && state.asteroids.length < MAX_ASTEROIDS) {
+  while (state.spawnIn <= 0 && state.asteroids.length < cap) {
     state.asteroids.push(spawnAsteroid(state.spawnIndex, width, height));
     state.spawnIndex += 1;
-    state.spawnIn += SPAWN_EVERY;
+    state.spawnIn += every;
   }
+}
+
+function spawnInterval(elapsed: number): number {
+  return Math.max(0.32, 0.9 - elapsed * 0.02);
+}
+
+function asteroidCap(elapsed: number): number {
+  return Math.min(14, 5 + Math.floor(elapsed / 10));
 }
 
 function spawnAsteroid(
@@ -155,21 +203,27 @@ function spawnAsteroid(
   width: number,
   height: number,
 ): Asteroid {
-  const cycle = index % 4;
-  const side = cycle % 2 === 0 ? "left" : "right";
-  const size: AsteroidSize = cycle < 2 ? "large" : "small";
-  const y = height * (LANES[cycle] ?? 0.5);
-  return createAsteroid(size, side, y, width);
+  const side = SIDES[index % SIDES.length] ?? "left";
+  const size: AsteroidSize = index % 2 === 0 ? "large" : "small";
+  const lane = LANES[index % LANES.length] ?? 0.5;
+  const along = (side === "left" || side === "right" ? height : width) * lane;
+  const spin = SPINS[index % SPINS.length] ?? 1;
+  return createAsteroid(size, side, along, width, height, spin);
 }
 
-function updateShots(state: State, dt: number): void {
+function updateShots(
+  state: State,
+  dt: number,
+  width: number,
+  height: number,
+): void {
   for (const shot of state.shots) {
     moveShot(shot, dt);
   }
 
   const shotsLeft: Shot[] = [];
   for (const shot of state.shots) {
-    if (shotIsGone(shot)) {
+    if (shotIsGone(shot, width, height)) {
       continue;
     }
     const hitIndex = state.asteroids.findIndex((asteroid) =>
@@ -186,27 +240,39 @@ function updateShots(state: State, dt: number): void {
     asteroid.life -= 1;
     if (asteroid.life <= 0) {
       state.asteroids.splice(hitIndex, 1);
+      playExplosion();
     }
   }
   state.shots = shotsLeft;
 }
 
-function direction(held: ReadonlySet<string>): { x: number; y: number } {
-  let x = 0;
-  let y = 0;
-  if (held.has("ArrowLeft")) {
-    x -= 1;
+function hitShip(state: State): void {
+  const still = new Set<Asteroid>();
+  for (const asteroid of state.asteroids) {
+    if (!shipHitsAsteroid(state.ship, asteroid)) {
+      continue;
+    }
+    if (!state.contacts.has(asteroid)) {
+      state.life = Math.max(0, state.life - asteroidDamage(asteroid.size));
+    }
+    still.add(asteroid);
   }
-  if (held.has("ArrowRight")) {
-    x += 1;
+  state.contacts = still;
+}
+
+function control(held: ReadonlySet<string>): ShipControl {
+  let turn = 0;
+  if (held.has("ArrowLeft") || held.has("KeyA")) {
+    turn -= 1;
   }
-  if (held.has("ArrowUp")) {
-    y -= 1;
+  if (held.has("ArrowRight") || held.has("KeyD")) {
+    turn += 1;
   }
-  if (held.has("ArrowDown")) {
-    y += 1;
-  }
-  return { x, y };
+  return {
+    turn,
+    thrust: held.has("ArrowUp") || held.has("KeyW"),
+    brake: held.has("ArrowDown") || held.has("KeyS"),
+  };
 }
 
 function fit(canvas: HTMLCanvasElement): void {

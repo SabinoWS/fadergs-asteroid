@@ -2,7 +2,7 @@
 
 Asteroids no navegador para quem quer jogar a versão clássica de vetores, sem instalar nada.
 
-A tela atual tem a nave nas setas, asteroides entrando pelas laterais e tiro com a tecla espaço.
+A nave gira com as setas ou com WASD, acelera para a frente e freia. Asteroides entram pelos quatro lados. O tiro sai da ponta da nave.
 
 ## Stack
 
