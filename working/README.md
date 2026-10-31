@@ -15,4 +15,5 @@ A funcionalidade só fecha quando os três blocos estão marcados. A próxima fu
 - [x] [03_implementacao_inicial](./03_implementacao_inicial/README.md)
 - [x] [04_melhorias_visuais](./04_melhorias_visuais/README.md)
 - [x] [05_levantamento_melhorias](./05_levantamento_melhorias/README.md)
-- [ ] [06_melhorias_jogo](./06_melhorias_jogo/README.md)
+- [x] [06_melhorias_jogo](./06_melhorias_jogo/README.md)
+- [x] [07_game_over_chefao](./07_game_over_chefao/README.md)

@@ -43,6 +43,16 @@ W acelera, S desacelera, A vira à esquerda e D vira à direita. O mesmo efeito 
 
 Tiro tem som. A explosão do asteroide, quando a vida chega a zero, tem som. Os sons são gerados no navegador.
 
+### 8. Game over
+
+Quando a vida da nave chega a zero, ela explode e a partida acaba. Aparece um botão para reiniciar.
+
+### 9. Asteroide chefão
+
+Aos 45 segundos aparece um chefão. Ele não sai da tela: persegue a nave até o jogador destruí-lo. Um contato com outro asteroide mata esse asteroide. Encostar na nave tira 50% da vida dela, 50 pontos de 100, uma vez por contato.
+
+A vida do chefão não foi dita. Fica em 8, visível no centro, e cada tiro tira 1.
+
 ## Plano de ataque
 
 As sete melhorias entram juntas em [06_melhorias_jogo](../06_melhorias_jogo/README.md), nesta ordem:
@@ -54,3 +64,8 @@ As sete melhorias entram juntas em [06_melhorias_jogo](../06_melhorias_jogo/READ
 5. Pilotagem por direção com as setas — melhoria 5.
 6. WASD — melhoria 6.
 7. Sons de tiro e de explosão — melhoria 7.
+
+Game over e o chefão entram em [07_game_over_chefao](../07_game_over_chefao/README.md):
+
+1. Explosão, game over e reinício — melhoria 8.
+2. Chefão aos 45 segundos — melhoria 9.
